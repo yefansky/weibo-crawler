@@ -2021,16 +2021,21 @@ class Weibo(object):
 
     def get_sqlite_connection(self):
         path = self.get_sqlte_path()
-        create = False
-        if not os.path.exists(path):
-            create = True
-
-        con = sqlite3.connect(path)
-
-        if create == True:
-            self.create_sqlite_table(connection=con)
-
-        return con
+        dir_path = os.path.dirname(path)
+        
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+        
+        create_db = not os.path.exists(path)
+        
+        try:
+            con = sqlite3.connect(path)
+            if create_db:
+                self.create_sqlite_table(connection=con)
+            return con
+        except sqlite3.Error as e:
+            print(f"无法打开数据库: {path}\n错误详情: {str(e)}")
+            raise
 
     def create_sqlite_table(self, connection: sqlite3.Connection):
         sql = self.get_sqlite_create_sql()
