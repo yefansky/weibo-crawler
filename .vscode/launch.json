@@ -1,16 +1,40 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
+            "name": "Flask Backend (service.py)",
             "type": "python",
             "request": "launch",
-            "program": "weibo.py",
+            "program": "${workspaceFolder}/service.py",
             "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "args": [],
             "justMyCode": true
+        },
+        {
+            "name": "Streamlit Frontend",
+            "type": "python",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "${workspaceFolder}/webui.py",
+                "--server.port",
+                "8501"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": true
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Launch Full Application",
+            "configurations": ["Flask Backend (service.py)", "Streamlit Frontend"]
         }
     ]
 }

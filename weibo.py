@@ -170,6 +170,7 @@ class Weibo(object):
         self.weibo_id_list = []  # 存储爬取到的所有微博id
         self.long_sleep_count_before_each_user = 0 #每个用户前的长时间sleep避免被ban
         self.store_binary_in_sqlite = config.get("store_binary_in_sqlite", 0)
+        
     def validate_config(self, config):
         """验证配置是否正确"""
 

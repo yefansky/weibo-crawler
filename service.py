@@ -1,4 +1,5 @@
 from weibo import Weibo, handle_config_renaming
+from weibo import get_config as get_config_from_file
 import const
 import logging
 import logging.config
@@ -25,29 +26,27 @@ logging.config.fileConfig(logging_path)
 logger = logging.getLogger("api")
 
 config = {
-    "user_id_list": [
-        "6067225218", 
-        "1445403190"
-        ],
-    "only_crawl_original": 1,
+    "user_id_list": [],#"user_id_list.txt",
+    "only_crawl_original": 0,
     "since_date": 1,
     "start_page": 1,
+    "page_weibo_count": 10,
     "write_mode": [
-        "csv",
-        "json",
         "sqlite"
     ],
-    "original_pic_download": 0,
+    "original_pic_download": 1,
     "retweet_pic_download": 0,
-    "original_video_download": 0,
+    "original_video_download": 1,
     "retweet_video_download": 0,
-    "download_comment": 0,
+    "original_live_photo_download": 1,
+    "retweet_live_photo_download": 0,
+    "download_comment": 1,
     "comment_max_download_count": 100,
-    "download_repost": 0,
+    "download_repost": 1,
     "repost_max_download_count": 100,
     "user_id_as_folder_name": 0,
     "remove_html_tag": 1,
-    "cookie": "your weibo cookie",
+    "cookie": "your cookie",
     "mysql_config": {
         "host": "localhost",
         "port": 3306,
@@ -55,6 +54,7 @@ config = {
         "password": "123456",
         "charset": "utf8mb4"
     },
+    "store_binary_in_sqlite": 0,
     "mongodb_URI": "mongodb://[username:password@]host[:port][/[defaultauthdb][?options]]",
     "post_config": {
         "api_url": "https://api.example.com",
@@ -115,12 +115,16 @@ def run_refresh_task(task_id, user_id_list=None):
             if current_task_id == task_id:
                 current_task_id = None
 
+@app.route('/get_status')
+def get_status():
+    return "ok", 200
+
 @app.route('/refresh', methods=['POST'])
 def refresh():
     global current_task_id
     
     # 获取请求参数
-    data = request.get_json()
+    data = new_func()
     user_id_list = data.get('user_id_list') if data else None
     
     # 验证参数
@@ -159,6 +163,10 @@ def refresh():
         'user_id_list': user_id_list
     }), 202
 
+def new_func():
+    data = request.get_json()
+    return data
+
 @app.route('/task/<task_id>', methods=['GET'])
 def get_task_status(task_id):
     task = tasks.get(task_id)
@@ -177,10 +185,14 @@ def get_task_status(task_id):
         
     return jsonify(response)
 
+def get_sqlite_connection():
+    wb = Weibo(config)
+    return wb.get_sqlite_connection()
+
 @app.route('/weibos', methods=['GET'])
 def get_weibos():
     try:
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_sqlite_connection()
         cursor = conn.cursor()
         # 按created_at倒序查询所有微博
         cursor.execute("SELECT * FROM weibo ORDER BY created_at DESC")
@@ -202,7 +214,7 @@ def get_weibos():
 @app.route('/weibos/<weibo_id>', methods=['GET'])
 def get_weibo_detail(weibo_id):
     try:
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_sqlite_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM weibo WHERE id=?", (weibo_id,))
         columns = [column[0] for column in cursor.description]

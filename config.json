@@ -5,7 +5,7 @@
     "start_page": 1,
     "page_weibo_count": 10,
     "write_mode": [
-        "csv"
+        "sqlite"
     ],
     "original_pic_download": 1,
     "retweet_pic_download": 0,
