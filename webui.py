@@ -279,7 +279,6 @@ if check_service_running():
 else:
     st.warning("服务未运行，请先启动服务")
 
-# 微博数据展示
 st.header("微博数据")
 if check_service_running():
     weibos = get_weibos()
@@ -324,26 +323,41 @@ if check_service_running():
                     st.image(weibo.get('user_profile_image_url', 'https://via.placeholder.com/100'), 
                              width=100, caption=weibo.get('user_name', '未知用户'))
                     
-                    if st.button("查看详情", key=f"detail_{weibo['id']}"):
+                    # 修改1: 使用不同的键名给按钮
+                    if st.button("查看详情", key=f"btn_detail_{weibo['id']}"):
                         detail = get_weibo_detail(weibo['id'])
                         if detail:
-                            st.session_state[f"detail_{weibo['id']}"] = detail
+                            # 修改2: 使用新的键名存储详情数据
+                            st.session_state[f"detail_data_{weibo['id']}"] = detail
                 
-                # 显示详情（如果已加载）
-                if f"detail_{weibo['id']}" in st.session_state:
-                    detail = st.session_state[f"detail_{weibo['id']}"]
-                    st.subheader("微博详情")
+                # 修改3: 检查新键名是否存在
+                detail_key = f"detail_data_{weibo['id']}"
+                if detail_key in st.session_state:
+                    detail = st.session_state[detail_key]
                     
-                    # 显示评论数据
-                    if 'comments' in detail and detail['comments']:
-                        st.markdown(f"**评论 ({len(detail['comments'])}条):**")
-                        for comment in detail['comments']:
-                            st.markdown(f"- **{comment.get('user_name', '匿名')}**: {comment.get('text', '')}")
+                    # 添加防御性检查
+                    if not detail:
+                        st.error("获取微博详情失败，请检查服务状态")
+                        if st.button("重试", key=f"retry_{weibo['id']}"):
+                            # 修改4: 删除新键名
+                            del st.session_state[detail_key]
+                            st.rerun()
                     else:
-                        st.info("没有评论数据")
+                        st.subheader("微博详情")
+                        
+                        # 显示评论数据 - 添加额外检查
+                        comments = detail.get('comments')
+                        if comments:  # 直接检查是否存在且非空
+                            st.markdown(f"**评论 ({len(comments)}条):**")
+                            for comment in comments:
+                                st.markdown(f"- **{comment.get('user_name', '匿名')}**: {comment.get('text', '')}")
+                        else:
+                            st.info("没有评论数据")
                     
+                    # 修改5: 更新关闭按钮逻辑
                     if st.button("关闭详情", key=f"close_{weibo['id']}"):
-                        del st.session_state[f"detail_{weibo['id']}"]
+                        # 删除新键名
+                        del st.session_state[detail_key]
                         st.rerun()
         
         st.info(f"显示 {len(weibos)} 条微博数据")

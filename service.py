@@ -228,7 +228,7 @@ def get_weibo_detail(weibo_id):
             return {"error": "Weibo not found"}, 404
     except Exception as e:
         logger.exception(e)
-        return {"error": str(e)}, 500
+        return jsonify({"id": weibo_id, "error": str(e), "comments": []}), 500
 
 def schedule_refresh():
     """定时刷新任务"""
