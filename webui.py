@@ -13,6 +13,43 @@ FLASK_PORT = 5000
 FLASK_URL = f"http://localhost:{FLASK_PORT}"
 SERVICE_PY_PATH = os.path.abspath("./service.py")  # 使用绝对路径
 
+default_config ={
+    "user_id_list": [],#"user_id_list.txt",
+    "only_crawl_original": 0,
+    "since_date": 1,
+    "start_page": 1,
+    "page_weibo_count": 10,
+    "write_mode": [
+        "sqlite"
+    ],
+    "original_pic_download": 1,
+    "retweet_pic_download": 0,
+    "original_video_download": 1,
+    "retweet_video_download": 0,
+    "original_live_photo_download": 1,
+    "retweet_live_photo_download": 0,
+    "download_comment": 1,
+    "comment_max_download_count": 100,
+    "download_repost": 1,
+    "repost_max_download_count": 100,
+    "user_id_as_folder_name": 0,
+    "remove_html_tag": 1,
+    "cookie": "your cookie",
+    "mysql_config": {
+        "host": "localhost",
+        "port": 3306,
+        "user": "root",
+        "password": "123456",
+        "charset": "utf8mb4"
+    },
+    "store_binary_in_sqlite": 0,
+    "mongodb_URI": "mongodb://[username:password@]host[:port][/[defaultauthdb][?options]]",
+    "post_config": {
+        "api_url": "https://api.example.com",
+        "api_token": ""
+    }
+}
+
 def get_current_python():
     """获取当前虚拟环境的 Python 解释器路径"""
     return sys.executable
@@ -81,7 +118,16 @@ def trigger_refresh(config_data):
         return response.json() if response.status_code == 202 else None
     except requests.ConnectionError:
         return None
-
+    
+def clear_data():
+    try:
+        response = requests.get(
+            f"{FLASK_URL}/clear_data"
+        )
+        return response.json() if response.status_code == 200 else None
+    except requests.ConnectionError:
+        return None
+    
 def get_task_status(task_id):
     """获取任务状态"""
     try:
@@ -173,6 +219,17 @@ st.caption(f"服务文件路径: `{SERVICE_PY_PATH}`")
 # 配置设置区域
 st.header("配置设置")
 with st.expander("微博爬取配置"):
+    try:
+        # 尝试从服务端加载配置
+        response = requests.get(f"{FLASK_URL}/get_config")
+        if response.status_code == 200:
+            st.session_state.config = response.json()
+        else:
+            # 加载失败时使用默认配置
+            st.session_state.config = default_config
+    except:
+        st.session_state.config = default_config
+
     # 用户ID列表配置
     user_ids = st.text_area(
         "微博用户ID列表（每行一个ID）", 
@@ -233,14 +290,28 @@ with st.expander("微博爬取配置"):
     st.info("存储模式固定为 SQLite")
     st.session_state.config["write_mode"] = ["sqlite"]
     
-    # 显示当前配置
-    if st.button("查看当前配置", key="view_config"):
-        st.json(st.session_state.config)
+    if st.button("保存配置", key="save_config"):
+        # 确保服务正在运行
+        if not check_service_running():
+            st.warning("请先启动服务以保存配置")
+        else:
+            try:
+                # 发送配置到服务端保存
+                response = requests.post(
+                    f"{FLASK_URL}/save_config",
+                    json=st.session_state.config
+                )
+                if response.status_code == 200:
+                    st.success("配置已保存到数据库！")
+                else:
+                    st.error("保存配置失败")
+            except Exception as e:
+                st.error(f"保存配置时出错: {str(e)}")
 
 # 微博刷新功能
-st.header("数据刷新")
+st.header("任务状态")
 if check_service_running():
-    if st.button("立即刷新微博", type="primary", key="refresh_btn"):
+    if st.button("开始抓取", type="primary", key="refresh_btn"):
         # 确保配置值为整数（Weibo库要求）
         int_config = st.session_state.config.copy()
         
@@ -248,9 +319,13 @@ if check_service_running():
         if result and 'task_id' in result:
             st.session_state.task_id = result['task_id']
             st.session_state.last_refresh = time.time()
-            st.success("刷新任务已启动!")
+            st.success("抓取任务已启动!")
         else:
-            st.error("刷新任务启动失败，请检查服务状态")
+            st.error("抓取任务启动失败，请检查服务状态")
+
+    if st.button("清空数据", type="primary", key="clear_data_btn"):
+        response = clear_data()
+        st.rerun()
     
     # 显示任务状态
     if st.session_state.task_id:

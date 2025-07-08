@@ -91,13 +91,12 @@ def get_config(user_id_list=None):
     handle_config_renaming(current_config, oldName="result_dir_name", newName="user_id_as_folder_name")
     return current_config
 
-def run_refresh_task(task_id, user_id_list=None):
+def run_refresh_task(task_id, config):
     global current_task_id
     try:
         tasks[task_id]['state'] = 'PROGRESS'
         tasks[task_id]['progress'] = 0
         
-        config = get_config(user_id_list)
         wb = Weibo(config)
         tasks[task_id]['progress'] = 50
         
@@ -124,8 +123,8 @@ def refresh():
     global current_task_id
     
     # 获取请求参数
-    data = new_func()
-    user_id_list = data.get('user_id_list') if data else None
+    config_data = new_func()
+    user_id_list = config_data.get('user_id_list') if config_data else None
     
     # 验证参数
     if not user_id_list or not isinstance(user_id_list, list):
@@ -154,7 +153,7 @@ def refresh():
         }
         current_task_id = task_id
         
-    executor.submit(run_refresh_task, task_id, user_id_list)
+    executor.submit(run_refresh_task, task_id, config_data)
     return jsonify({
         'task_id': task_id,
         'status': 'Task started',
@@ -210,6 +209,49 @@ def get_weibos():
     except Exception as e:
         logger.exception(e)
         return {"error": str(e)}, 500
+    
+def init_db():
+    """初始化数据库"""
+    conn = get_sqlite_connection()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS config
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  config_json TEXT,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+def save_config(config):
+    """保存配置到数据库"""
+    conn = get_sqlite_connection()
+    c = conn.cursor()
+    c.execute("INSERT INTO config (config_json) VALUES (?)", (json.dumps(config),))
+    conn.commit()
+    conn.close()
+
+def load_config():
+    """从数据库加载最新配置"""
+    conn = get_sqlite_connection()
+    c = conn.cursor()
+    c.execute("SELECT config_json FROM config ORDER BY id DESC LIMIT 1")
+    row = c.fetchone()
+    conn.close()
+    return json.loads(row[0]) if row else None
+
+@app.route('/save_config', methods=['POST'])
+def handle_save_config():
+    init_db()
+    config = request.json
+    save_config(config)
+    return jsonify({"status": "success"}), 200
+
+@app.route('/get_config', methods=['GET'])
+def handle_get_config():
+    config = load_config()
+    if config:
+        return jsonify(config), 200
+    else:
+        return jsonify({"error": "No config found"}), 404
 
 @app.route('/weibos/<weibo_id>', methods=['GET'])
 def get_weibo_detail(weibo_id):
@@ -247,13 +289,57 @@ def schedule_refresh():
                 with task_lock:
                     global current_task_id
                     current_task_id = task_id
-                executor.submit(run_refresh_task, task_id, config['user_id_list'])
+                executor.submit(run_refresh_task, task_id, config)
                 logger.info(f"Scheduled task {task_id} started")
             
             time.sleep(600)  # 10分钟间隔
         except Exception as e:
             logger.exception("Schedule task error")
             time.sleep(60)  # 发生错误时等待1分钟后重试
+
+@app.route('/clear_data', methods=['GET'])
+def clear_data():
+    """清空数据库中的所有微博数据"""
+    try:
+        # 检查是否有正在运行的任务
+        with task_lock:
+            running_task_id, running_task = get_running_task()
+            if running_task:
+                return jsonify({
+                    'error': 'Cannot clear data while a task is running',
+                    'task_id': running_task_id,
+                    'state': running_task['state']
+                }), 409  # 409 Conflict
+        
+        # 获取数据库连接
+        conn = get_sqlite_connection()
+        cursor = conn.cursor()
+        
+        # 清空所有相关表
+        cursor.execute("DELETE FROM weibo")
+        cursor.execute("DELETE FROM comments")
+        cursor.execute("DELETE FROM reposts")
+        cursor.execute("DELETE FROM user")
+        cursor.execute("DELETE FROM bins")
+        
+        # 重置自增ID
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('weibo', 'comments', 'reposts', 'user', 'bins')")
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'All data has been cleared',
+            'tables_cleared': ['weibo', 'comments', 'reposts', 'user', 'bins']
+        }), 200
+        
+    except Exception as e:
+        logger.exception(e)
+        return jsonify({
+            'error': str(e),
+            'message': 'Failed to clear data'
+        }), 500
 
 if __name__ == "__main__":
     # 启动定时任务线程
