@@ -210,6 +210,36 @@ def get_weibos():
         logger.exception(e)
         return {"error": str(e)}, 500
     
+@app.route('/weibo_comments/<weibo_id>', methods=['GET'])
+def get_weibo_comments(weibo_id):
+    """获取指定微博的评论数据"""
+    try:
+        conn = get_sqlite_connection()
+        cursor = conn.cursor()
+        
+        # 查询指定微博的评论，按时间倒序排列
+        query = """
+        SELECT 
+            id, user_screen_name, user_avatar_url, text, created_at, like_count
+        FROM comments 
+        WHERE weibo_id = ?
+        ORDER BY created_at DESC
+        """
+        cursor.execute(query, (weibo_id,))
+        
+        columns = [column[0] for column in cursor.description]
+        comments = []
+        for row in cursor.fetchall():
+            comment = dict(zip(columns, row))
+            comments.append(comment)
+            
+        conn.close()
+        return jsonify({"comments": comments}), 200
+        
+    except Exception as e:
+        logger.exception(e)
+        return {"error": str(e)}, 500
+    
 def init_db():
     """初始化数据库"""
     conn = get_sqlite_connection()

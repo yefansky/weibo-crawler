@@ -144,10 +144,11 @@ def get_weibos():
     except requests.ConnectionError:
         return []
 
-def get_weibo_detail(weibo_id):
-    """获取微博详情"""
+def get_weibo_comments(weibo_id):
+    """获取微博评论"""
     try:
-        response = requests.get(f"{FLASK_URL}/weibos/{weibo_id}")
+        # 调用新的API端点
+        response = requests.get(f"{FLASK_URL}/weibo_comments/{weibo_id}")
         return response.json() if response.status_code == 200 else None
     except requests.ConnectionError:
         return None
@@ -396,43 +397,51 @@ if check_service_running():
                 with col2:
                     # 用户信息
                     st.image(weibo.get('user_avatar_url', 'https://via.placeholder.com/100'), 
-                             width=100, caption=weibo.get('screen_name', '未知用户'))
+                            width=100, caption=weibo.get('screen_name', '未知用户'))
                     
                     # 修改1: 使用不同的键名给按钮
                     if st.button("查看详情", key=f"btn_detail_{weibo['id']}"):
-                        detail = get_weibo_detail(weibo['id'])
-                        if detail:
-                            # 修改2: 使用新的键名存储详情数据
-                            st.session_state[f"detail_data_{weibo['id']}"] = detail
-                
-                # 修改3: 检查新键名是否存在
-                detail_key = f"detail_data_{weibo['id']}"
-                if detail_key in st.session_state:
-                    detail = st.session_state[detail_key]
+                        # 修改2: 调用获取评论的函数
+                        comments_data = get_weibo_comments(weibo['id'])
+                        if comments_data:
+                            # 修改3: 存储评论数据而不是整个微博详情
+                            st.session_state[f"comments_data_{weibo['id']}"] = comments_data.get('comments', [])
+
+                # 修改4: 检查评论数据是否存在
+                comments_key = f"comments_data_{weibo['id']}"
+                if comments_key in st.session_state:
+                    comments = st.session_state[comments_key]
                     
-                    # 添加防御性检查
-                    if not detail:
-                        st.error("获取微博详情失败，请检查服务状态")
-                        if st.button("重试", key=f"retry_{weibo['id']}"):
-                            # 修改4: 删除新键名
-                            del st.session_state[detail_key]
-                            st.rerun()
+                    if not comments:  # 没有评论的情况
+                        st.info("该微博暂无评论")
                     else:
-                        st.subheader("微博详情")
-                        
-                        # 显示评论数据 - 添加额外检查
-                        comments = detail.get('comments')
-                        if comments:  # 直接检查是否存在且非空
-                            st.markdown(f"**评论 ({len(comments)}条):**")
-                            for comment in comments:
-                                st.markdown(f"- **{comment.get('user_name', '匿名')}**: {comment.get('text', '')}")
-                        else:
-                            st.info("没有评论数据")
+                        st.subheader(f"评论 ({len(comments)}条):")
+                        for i, comment in enumerate(comments):
+                            with st.container():
+                                col1, col2 = st.columns([1, 4])
+                                with col1:
+                                    # 处理空头像URL的情况
+                                    avatar_url = comment.get('user_avatar_url', '')
+                                    if not avatar_url or avatar_url.strip() == '':
+                                        # 使用占位图
+                                        st.image('https://via.placeholder.com/50', 
+                                                width=50, caption=comment.get('user_screen_name', '匿名用户'))
+                                    else:
+                                        try:
+                                            st.image(avatar_url, 
+                                                    width=50, caption=comment.get('user_screen_name', '匿名用户'))
+                                        except Exception:
+                                            # 如果图片加载失败，使用占位图
+                                            st.image('https://via.placeholder.com/50', 
+                                                    width=50, caption=comment.get('user_screen_name', '匿名用户'))
+                                with col2:
+                                    st.write(comment.get('text', ''))
+                                    st.caption(f"👍 {comment.get('like_count', 0)} | {comment.get('created_at', '')}")
                     
-                    # 修改5: 更新关闭按钮逻辑
+                    # 关闭详情按钮
                     if st.button("关闭详情", key=f"close_{weibo['id']}"):
-                        # 删除新键名
-                        del st.session_state[detail_key]
+                        # 删除评论数据
+                        del st.session_state[comments_key]
                         st.rerun()
         
         st.info(f"显示 {len(weibos)} 条微博数据")
