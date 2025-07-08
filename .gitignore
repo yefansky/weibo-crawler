@@ -380,3 +380,5 @@ $RECYCLE.BIN/
 
 js.json
 user_id_list.txt
+*.db
+
