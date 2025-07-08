@@ -374,7 +374,7 @@ if check_service_running():
             if search_term and search_term.lower() not in weibo.get('text', '').lower():
                 continue
             
-            with st.expander(f"{weibo.get('user_name', '未知用户')} - {weibo.get('created_at', '未知时间')}"):
+            with st.expander(f"{weibo.get('screen_name', '未知用户')} - {weibo.get('created_at', '未知时间')}"):
                 # 创建两列布局
                 col1, col2 = st.columns([3, 1])
                 
@@ -395,8 +395,8 @@ if check_service_running():
                 
                 with col2:
                     # 用户信息
-                    st.image(weibo.get('user_profile_image_url', 'https://via.placeholder.com/100'), 
-                             width=100, caption=weibo.get('user_name', '未知用户'))
+                    st.image(weibo.get('user_avatar_url', 'https://via.placeholder.com/100'), 
+                             width=100, caption=weibo.get('screen_name', '未知用户'))
                     
                     # 修改1: 使用不同的键名给按钮
                     if st.button("查看详情", key=f"btn_detail_{weibo['id']}"):
