@@ -395,9 +395,21 @@ if check_service_running():
                         meta_cols[3].metric("类型", "原创微博")
                 
                 with col2:
-                    # 用户信息
-                    st.image(weibo.get('user_avatar_url', 'https://via.placeholder.com/100'), 
-                            width=100, caption=weibo.get('screen_name', '未知用户'))
+                    avatar_url = weibo.get('user_avatar_url', '')
+                    screen_name = weibo.get('screen_name', '未知用户')
+                    
+                    # 处理空头像URL的情况
+                    if not avatar_url or avatar_url.strip() == '':
+                        st.image('https://via.placeholder.com/100', 
+                                width=100, caption=screen_name)
+                    else:
+                        try:
+                            st.image(avatar_url, 
+                                    width=100, caption=screen_name)
+                        except Exception as e:
+                            print(f"头像加载失败: {str(e)}")
+                            st.image('https://via.placeholder.com/100', 
+                                    width=100, caption=screen_name)
                     
                     # 修改1: 使用不同的键名给按钮
                     if st.button("查看详情", key=f"btn_detail_{weibo['id']}"):

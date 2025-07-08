@@ -193,19 +193,27 @@ def get_weibos():
     try:
         conn = get_sqlite_connection()
         cursor = conn.cursor()
-        # 按created_at倒序查询所有微博
-        cursor.execute("SELECT * FROM weibo ORDER BY created_at DESC")
+        
+        # 修改后的SQL：关联weibo表和user表获取avatar_url
+        query = """
+        SELECT 
+            w.*, 
+            u.avatar_url AS user_avatar_url 
+        FROM weibo w
+        LEFT JOIN user u ON w.user_id = u.id
+        ORDER BY w.created_at DESC
+        """
+        cursor.execute(query)
+        
         columns = [column[0] for column in cursor.description]
         weibos = []
         for row in cursor.fetchall():
             weibo = dict(zip(columns, row))
             weibos.append(weibo)
+            
         conn.close()
-        res1 = json.dumps(weibos, ensure_ascii=False)
-        print(res1)
-        res = jsonify(weibos)
-        print(res)
-        return res, 200
+        return jsonify(weibos), 200
+        
     except Exception as e:
         logger.exception(e)
         return {"error": str(e)}, 500
