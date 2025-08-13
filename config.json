@@ -1,11 +1,11 @@
 {
-    "user_id_list": "user_id_list.txt",
+    "user_id_list":  ["6099258529", "7056235331"],
     "only_crawl_original": 0,
-    "since_date": 1,
+    "since_date": 14,
     "start_page": 1,
     "page_weibo_count": 10,
     "write_mode": [
-        "sqlite"
+        "csv"
     ],
     "original_pic_download": 1,
     "retweet_pic_download": 0,
@@ -14,7 +14,7 @@
     "original_live_photo_download": 1,
     "retweet_live_photo_download": 0,
     "download_comment": 1,
-    "comment_max_download_count": 100,
+    "comment_max_download_count": 1000,
     "download_repost": 1,
     "repost_max_download_count": 100,
     "user_id_as_folder_name": 0,
@@ -33,4 +33,4 @@
         "api_url": "https://api.example.com",
         "api_token": ""
     }
-}
+} 

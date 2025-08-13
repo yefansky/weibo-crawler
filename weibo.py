@@ -1562,6 +1562,50 @@ class Weibo(object):
         file_path = self.get_filepath("csv")
         self.csv_helper(result_headers, result_data, file_path)
 
+    def get_comment_headers(self):
+        return [
+            "id", "bid", "weibo_id", "root_id",
+            "user_id", "created_at", "user_screen_name",
+            "user_avatar_url", "text", "pic_url", "like_count"
+        ]
+
+    def csv_insert_comments(self, weibo, comments):
+        if "csv" not in self.write_mode:
+            return
+        
+        comment_file = self.get_filepath("csv").replace(".csv", "_comments.csv")
+        need_header = not os.path.exists(comment_file)
+        
+        with open(comment_file, 'a', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            if need_header:
+                writer.writerow(self.get_comment_headers())
+                
+            for comment in comments:
+                data = [
+                    comment.get('id', ''),
+                    comment.get('bid', ''),
+                    weibo['id'],
+                    comment.get('rootid', ''),
+                    comment['user']['id'],
+                    comment.get('created_at', ''),
+                    comment['user']['screen_name'],
+                    comment['user'].get('avatar_hd', ''),
+                    re.sub('<[^<]+?>', '', comment['text']).strip() if self.remove_html_tag else comment['text'],
+                    comment['pic']['large']['url'] if comment.get('pic') else '',
+                    comment.get('like_count', 0)
+                ]
+                writer.writerow(data)
+
+    def write_comments_csv(self, wrote_count):
+        for w in self.weibo[wrote_count:]:
+            if w["comments_count"] > 0:
+                self.get_weibo_comments(
+                    w,
+                    self.comment_max_download_count,
+                    self.csv_insert_comments
+                )
+
     def csv_helper(self, headers, result_data, file_path):
         """将指定信息写入csv文件"""
         if not os.path.isfile(file_path):
@@ -2157,6 +2201,8 @@ class Weibo(object):
         if self.got_count > wrote_count:
             if "csv" in self.write_mode:
                 self.write_csv(wrote_count)
+                if self.download_comment:
+                    self.write_comments_csv(wrote_count)
             if "json" in self.write_mode:
                 self.write_json(wrote_count)
             if "post" in self.write_mode:

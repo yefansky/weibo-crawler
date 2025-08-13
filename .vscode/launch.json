@@ -29,7 +29,16 @@
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "justMyCode": true
+        },
+        {
+            "name": "python weibo.py",
+            "type": "python",
+            "request": "launch",
+            "program": "weibo.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
+
     ],
     "compounds": [
         {
