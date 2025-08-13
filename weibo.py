@@ -1508,24 +1508,32 @@ class Weibo(object):
     def get_filepath(self, type):
         """获取结果文件路径"""
         try:
+            # 确定基础路径 - 优先使用EXE所在目录
+            if getattr(sys, 'frozen', False):
+                base_dir = os.path.dirname(sys.executable)  # EXE所在目录
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))  # 脚本所在目录
+            
+            # 创建用户目录
             dir_name = self.user["screen_name"]
             if self.user_id_as_folder_name:
                 dir_name = str(self.user_config["user_id"])
-            file_dir = (
-                os.path.split(os.path.realpath(__file__))[0]
-                + os.sep
-                + "weibo"
-                + os.sep
-                + dir_name
+            
+            # 构建完整路径
+            file_dir = os.path.join(
+                base_dir, 
+                "weibo", 
+                dir_name
             )
+            
+            # 特殊类型处理
             if type in ["img", "video", "live_photo"]:
-                file_dir = file_dir + os.sep + type
+                file_dir = os.path.join(file_dir, type)
             if not os.path.isdir(file_dir):
                 os.makedirs(file_dir)
             if type in ["img", "video", "live_photo"]:
                 return file_dir
-            file_path = file_dir + os.sep + str(self.user_config["user_id"]) + "." + type
-            return file_path
+            return os.path.join(file_dir, f"{self.user_config['user_id']}.{type}")
         except Exception as e:
             logger.exception(e)
 
