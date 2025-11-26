@@ -14,7 +14,7 @@
     - [6.按需求修改脚本（可选）](#6按需求修改脚本可选)
     - [7.定期自动爬取微博（可选）](#7定期自动爬取微博可选)
     - [8.使用docker](#8使用docker)
-  - [如何获取user_id](#如何获取user_id)
+  - [如何获取user\_id](#如何获取user_id)
   - [添加cookie与不添加cookie的区别（可选）](#添加cookie与不添加cookie的区别可选)
   - [如何获取cookie（可选）](#如何获取cookie可选)
   - [如何检测cookie是否有效（可选）](#如何检测cookie是否有效可选)
@@ -522,6 +522,12 @@ store_binary_in_sqlite控制是否往数据库中存储图片或视频的二进�
 
 mongodb_URI是mongodb的连接字符串。如果你不需要将结果信息写入mongodb，这个参数可以忽略，即删除或保留都无所谓；如果你需要写入mongodb，则需要配置为[完整的mongodb URI](https://www.mongodb.com/docs/manual/reference/connection-string/)。
 
+
+**设置post_config（可选）**
+
+post_config是write_mode为post时请求的配置，包括API URL和Token。如果你不需要将结果通过post发出，write_mode不包含post，这个参数可以忽略，即删除或保留都无所谓；如果你需要通过post发出，则需要改成自己的目标API URL和api_token。
+
+
 **设置start_page（可选）**
 
 start_page为爬取微博的初始页数，默认参数为1，即从所爬取用户的当前第一页微博内容开始爬取。
@@ -917,16 +923,22 @@ services:
 
 ## 如何获取cookie（可选）
 
-1.用Chrome打开<https://passport.weibo.cn/signin/login>；
+1. 打开浏览器，访问 [https://m.weibo.cn](https://m.weibo.cn)或[https://weibo.cn](https://weibo.cn)并登录。
+2. 按 `F12` 打开开发者工具，切换到 **Network** (网络) 标签页。
+3. 将复制的 Cookie 填入 `config.json`。
 
-2.输入微博的用户名、密码，登录，如图所示：
-![](https://github.com/dataabc/media/blob/master/weiboSpider/images/cookie1.png)
-登录成功后会跳转到<https://m.weibo.cn>;
+---
 
-3.按F12键打开Chrome开发者工具，在地址栏输入并跳转到<https://weibo.cn>，跳转后会显示如下类似界面:
-![](https://github.com/dataabc/media/blob/master/weiboSpider/images/cookie2.png)
-4.依此点击Chrome开发者工具中的Network->Name中的weibo.cn->Headers->Request Headers，"Cookie:"后的值即为我们要找的cookie值，复制即可，如图所示：
-![](https://github.com/dataabc/media/blob/master/weiboSpider/images/cookie3.png)
+> **以下为旧版获取方式（仅供参考）：**
+>
+> 1. 用Chrome打开 https://passport.weibo.cn/signin/login ；
+> 2. 输入微博的用户名、密码，登录，如图所示：
+> ![](https://github.com/dataabc/media/blob/master/weiboSpider/images/cookie1.png)
+> 登录成功后会跳转到 https://m.weibo.cn ;
+> 3. 按F12键打开Chrome开发者工具，在地址栏输入并跳转到 https://weibo.cn ，跳转后会显示如下类似界面:
+> ![](https://github.com/dataabc/media/blob/master/weiboSpider/images/cookie2.png)
+> 4. 依此点击Chrome开发者工具中的Network->Name中的weibo.cn->Headers->Request Headers，"Cookie:"后的值即为我们要找的cookie值，复制即可，如图所示：
+> ![](https://github.com/dataabc/media/blob/master/weiboSpider/images/cookie3.png)
 
 ## 如何检测cookie是否有效（可选）
 

@@ -98,14 +98,34 @@ class Weibo(object):
             "user_id_as_folder_name", 0
         )  # 结果目录名，取值为0或1，决定结果文件存储在用户昵称文件夹里还是用户id文件夹里
         cookie_string = config.get("cookie")  # 微博cookie，可填可不填
-        cookies = {}
-        for pair in cookie_string.split(';'):
-            if '=' in pair:
-                key, value = pair.split('=', 1)
-                cookies[key.strip()] = value.strip()
+        core_cookies = {}   # 核心包
+        backup_cookies = {} # 备份
+        # Cookie清洗：提取核心字段。若后续预热失败，则回退使用原版 _T_WM/XSRF-TOKEN
+        if cookie_string and "SUB=" in cookie_string:
+            # 1. 提取核心 SUB
+            match_sub = re.search(r'SUB=(.*?)(;|$)', cookie_string)
+            if match_sub:
+                core_cookies['SUB'] = match_sub.group(1)
+            
+            # 2. 提取备份指纹
+            match_twm = re.search(r'_T_WM=(.*?)(;|$)', cookie_string)
+            if match_twm:
+                backup_cookies['_T_WM'] = match_twm.group(1)
+            
+            match_xsrf = re.search(r'XSRF-TOKEN=(.*?)(;|$)', cookie_string)
+            if match_xsrf:
+                backup_cookies['XSRF-TOKEN'] = match_xsrf.group(1)
+        
+        # 保底：如果没有提取到 SUB，说明格式特殊，全量加载
+        if not core_cookies and cookie_string:
+            for pair in cookie_string.split(';'):
+                if '=' in pair:
+                    key, value = pair.split('=', 1)
+                    core_cookies[key.strip()] = value.strip()
+                    
         self.headers = {
-            'Referer': 'https://weibo.com/',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Referer': 'https://m.weibo.cn/',  # 修正 Referer 为 m.weibo.cn
+            'accept': 'application/json, text/plain, */*',
             'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
             'cache-control': 'max-age=0',
             'priority': 'u=0, i',
@@ -128,9 +148,20 @@ class Weibo(object):
         
         user_id_list = config["user_id_list"]
         requests_session = requests.Session()
-        requests_session.cookies.update(cookies)
+        requests_session.cookies.update(core_cookies)
 
         self.session = requests_session
+        try:
+            # 请求只带 SUB
+            # 服务器下发适配 m.weibo.cn 的新指纹
+            self.session.get("https://m.weibo.cn", headers=self.headers, timeout=10)
+            logger.info("Session 预热成功，服务器已下发最新指纹。")
+            
+        except Exception as e:
+            #请求失败时，启用备份
+            logger.warning(f"Session 预热失败 ({e})，正在启用备份 Cookie...")
+            self.session.cookies.update(backup_cookies) # 把旧指纹装进去救急
+
         adapter = HTTPAdapter(max_retries=5)
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
@@ -591,7 +622,10 @@ class Weibo(object):
         """获取微博原始图片url"""
         if weibo_info.get("pics"):
             pic_info = weibo_info["pics"]
-            pic_list = [pic["large"]["url"] for pic in pic_info]
+            pic_list = [
+                pic['large']['url'] for pic in pic_info
+                if isinstance(pic, dict) and pic.get('large')
+            ]
             pics = ",".join(pic_list)
         else:
             pics = ""
@@ -1546,6 +1580,7 @@ class Weibo(object):
             "头条文章url",
             "原始图片url",
             "视频url",
+            "Live Photo视频url",
             "位置",
             "日期",
             "工具",
@@ -1928,6 +1963,99 @@ class Weibo(object):
             self.sqlite_insert_weibo(con, weibo)
         con.close()
 
+    def export_comments_to_csv_for_current_user(self):
+        """将当前用户相关的评论从 SQLite 导出到该用户目录下的 CSV 文件"""
+        # 仅在启用了 sqlite 写入且开启下载评论时导出
+        if "sqlite" not in self.write_mode or not self.download_comment:
+            return
+        try:
+            db_path = self.get_sqlte_path()
+            if not os.path.exists(db_path):
+                logger.warning("导出评论失败，未找到SQLite数据库: %s", db_path)
+                return
+
+            # 当前用户的 ID，用于筛选属于该用户微博的评论
+            user_id = str(self.user_config.get("user_id", ""))
+            if not user_id:
+                logger.warning("导出评论失败，当前用户ID为空")
+                return
+
+            # 用户结果目录，与微博 CSV 同级，例如 weibo/胡歌/ 或 weibo/1223178222/
+            csv_path = self.get_filepath("csv")
+            user_dir = os.path.dirname(csv_path)
+            if not os.path.isdir(user_dir):
+                os.makedirs(user_dir)
+            # 使用用户昵称作为文件名的一部分，避免再出现纯数字 user_id
+            screen_name = self.user.get("screen_name") or user_id
+            safe_screen_name = re.sub(r'[\\/:*?"<>|]', "_", str(screen_name))
+            out_path = os.path.join(user_dir, f"{safe_screen_name}_comments.csv")
+
+            con = sqlite3.connect(db_path)
+            cur = con.cursor()
+
+            # 只导出当前用户微博下的评论
+            sql = """
+                SELECT
+                    c.id,
+                    c.weibo_id,
+                    c.created_at,
+                    c.user_screen_name,
+                    c.text,
+                    c.pic_url,
+                    c.like_count
+                FROM comments c
+                JOIN weibo w ON c.weibo_id = w.id
+                WHERE w.user_id = ?
+                ORDER BY c.weibo_id, c.id
+            """
+            rows = cur.execute(sql, (user_id,)).fetchall()
+            con.close()
+
+            if not rows:
+                logger.info("用户 %s 没有可导出的评论记录，跳过生成评论 CSV", user_id)
+                return
+
+            header = [
+                "id",
+                "weibo_id",
+                "created_at",
+                "user_screen_name",
+                "text",
+                "pic_url",
+                "like_count",
+            ]
+
+            # 1）导出当前用户的汇总评论文件：<用户昵称>_comments.csv
+            with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                writer.writerows(rows)
+
+            # 2）按每条微博拆分导出：<用户昵称>_<weibo_id>_comments.csv
+            #    满足“用户昵称 + weiboId + comments”的文件命名要求
+            comments_by_weibo = {}
+            for row in rows:
+                weibo_id = row[1]
+                comments_by_weibo.setdefault(weibo_id, []).append(row)
+
+            for weibo_id, weibo_rows in comments_by_weibo.items():
+                per_weibo_path = os.path.join(
+                    user_dir, f"{safe_screen_name}_{weibo_id}_comments.csv"
+                )
+                with open(per_weibo_path, "w", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(header)
+                    writer.writerows(weibo_rows)
+
+            logger.info(
+                "共导出 %d 条评论到用户汇总 CSV: %s，并按每条微博拆分生成 %d 个评论 CSV",
+                len(rows),
+                out_path,
+                len(comments_by_weibo),
+            )
+        except Exception as e:
+            logger.exception(e)
+
     def sqlite_insert_comments(self, weibo, comments):
         if not comments or len(comments) == 0:
             return
@@ -1975,14 +2103,37 @@ class Weibo(object):
         sqlite_comment["pic_url"] = ""
         if comment.get("pic"):
             sqlite_comment["pic_url"] = comment["pic"]["large"]["url"]
-        if  sqlite_comment["pic_url"]:
+        if sqlite_comment["pic_url"]:
             pic_url = sqlite_comment["pic_url"]
-            pic_path = self.get_filepath("comment_img")
+
+            # 评论图片目录：weibo/<用户目录>/<用户昵称>_comments_img
+            csv_path = self.get_filepath("csv")
+            user_dir = os.path.dirname(csv_path)
+            if not os.path.isdir(user_dir):
+                os.makedirs(user_dir)
+            screen_name = self.user.get("screen_name") or str(
+                self.user_config.get("user_id", "")
+            )
+            safe_screen_name = re.sub(r'[\\/:*?"<>|]', "_", str(screen_name))
+            pic_path = os.path.join(user_dir, f"{safe_screen_name}_comments_img")
             if not os.path.exists(pic_path):
                 os.makedirs(pic_path)
-            pic_name = "{id}_{created_at}.jpg".format(
-                id=sqlite_comment["id"], created_at=sqlite_comment["created_at"]
+
+            # 文件名包含 微博用户昵称 + weibo_id + 评论用户昵称 + comments
+            # 为避免重名，如果已存在则在末尾追加 _1/_2/... 序号
+            weibo_id = sqlite_comment["weibo_id"]
+            comment_user = sqlite_comment.get("user_screen_name", "")
+            safe_comment_user = re.sub(r'[\\/:*?"<>|]', "_", str(comment_user))
+            base_name = "{screen_name}_{weibo_id}_{comment_user}_comments".format(
+                screen_name=safe_screen_name,
+                weibo_id=weibo_id,
+                comment_user=safe_comment_user,
             )
+            pic_name = base_name + ".jpg"
+            idx = 1
+            while os.path.exists(os.path.join(pic_path, pic_name)):
+                pic_name = f"{base_name}_{idx}.jpg"
+                idx += 1
             pic_full_path = os.path.join(pic_path, pic_name)
             if not os.path.exists(pic_full_path):
                 try:
@@ -2362,6 +2513,10 @@ class Weibo(object):
                 else:
                     self.initialize_info(user_config)
                     self.get_pages()
+
+                # 当前用户所有微博和评论抓取完毕后，再导出该用户的评论 CSV
+                self.export_comments_to_csv_for_current_user()
+
                 logger.info("信息抓取完毕")
                 logger.info("*" * 100)
                 if self.user_config_file_path and self.user:
